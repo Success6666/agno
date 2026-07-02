@@ -22,6 +22,13 @@ READ_METHODS = ["read_file", "list_files", "search_content"]
 WRITE_METHODS = ["write_file", "edit_file", "move_file", "delete_file", "run_command"]
 
 
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not available in this environment: {exc}")
+
+
 # ------------------------------------------------------------------
 # Constructor: partition resolution & validation
 # ------------------------------------------------------------------
@@ -274,6 +281,21 @@ def test_list_files_with_glob_pattern():
         assert paths == ["a.py", "sub/b.py"]
 
 
+def test_list_files_does_not_return_traversal_matches_outside_root():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        workspace_root = root / "workspace"
+        outside_dir = root / "outside"
+        workspace_root.mkdir()
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("outside secret")
+        ws = Workspace(workspace_root)
+
+        result = json.loads(ws.list_files(pattern="../outside/*.txt"))
+
+        assert result["files"] == []
+
+
 def test_list_files_skips_default_excludes():
     with tempfile.TemporaryDirectory() as tmp_dir:
         ws = Workspace(tmp_dir)
@@ -382,6 +404,24 @@ def test_search_content_finds_matches():
         names = [m["file"] for m in result["files"]]
         assert "hello.txt" in names
         assert "other.py" in names
+
+
+def test_search_content_skips_symlink_targets_outside_root():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        workspace_root = root / "workspace"
+        outside_dir = root / "outside"
+        workspace_root.mkdir()
+        outside_dir.mkdir()
+        secret = outside_dir / "secret.txt"
+        secret.write_text("outside needle")
+        _symlink_or_skip(workspace_root / "linked-secret.txt", secret)
+        ws = Workspace(workspace_root)
+
+        result = json.loads(ws.search_content(query="needle"))
+
+        assert result["matches_found"] == 0
+        assert result["files"] == []
 
 
 def test_search_content_directory_scoping():

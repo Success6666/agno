@@ -389,6 +389,22 @@ def test_find_basic():
         assert "readme.md" not in result
 
 
+def test_find_does_not_return_traversal_matches_outside_base():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        base_dir = root / "base"
+        outside_dir = root / "outside"
+        base_dir.mkdir()
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("outside secret")
+        tools = CodingTools(base_dir=base_dir, enable_find=True)
+
+        result = tools.find("../outside/*.txt")
+
+        assert result.startswith("No files found")
+        assert "secret.txt" not in result
+
+
 def test_find_limit():
     """Test that find results are capped."""
     with tempfile.TemporaryDirectory() as tmp_dir:

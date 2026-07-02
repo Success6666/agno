@@ -2,7 +2,16 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from agno.tools.file import FileTools
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not available in this environment: {exc}")
 
 
 def test_save_and_read_file():
@@ -94,6 +103,22 @@ def test_search_files_returns_relative_paths():
         assert "subdir/file3.txt" in data["files"]
 
 
+def test_search_files_does_not_return_traversal_matches_outside_base():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        base_dir = root / "base"
+        outside_dir = root / "outside"
+        base_dir.mkdir()
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("outside secret")
+        file_tools = FileTools(base_dir=base_dir)
+
+        result = json.loads(file_tools.search_files(pattern="../outside/*.txt"))
+
+        assert result["matches_found"] == 0
+        assert result["files"] == []
+
+
 def test_save_and_delete_file():
     with tempfile.TemporaryDirectory() as tmpdirname:
         f = FileTools(base_dir=Path(tmpdirname), enable_delete_file=True)
@@ -164,6 +189,24 @@ def test_search_content_finds_matches():
         file_names = [m["file"] for m in data["files"]]
         assert "hello.txt" in file_names
         assert "other.py" in file_names
+
+
+def test_search_content_skips_symlink_targets_outside_base():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        base_dir = root / "base"
+        outside_dir = root / "outside"
+        base_dir.mkdir()
+        outside_dir.mkdir()
+        secret = outside_dir / "secret.txt"
+        secret.write_text("outside needle")
+        _symlink_or_skip(base_dir / "linked-secret.txt", secret)
+        file_tools = FileTools(base_dir=base_dir)
+
+        result = json.loads(file_tools.search_content(query="needle"))
+
+        assert result["matches_found"] == 0
+        assert result["files"] == []
 
 
 def test_search_content_directory_scoping():

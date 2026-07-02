@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 from agno.tools import Toolkit
-from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS, path_matches_exclude
+from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS, path_matches_exclude, path_resolves_within
 from agno.utils.log import log_debug, log_error
 
 TEXT_EXTENSIONS = {
@@ -302,7 +302,11 @@ class FileTools(Toolkit):
                 return "Error: Pattern cannot be empty"
 
             log_debug(f"Searching files in {self.base_dir} with pattern {pattern}")
-            matching_files = [p for p in self.base_dir.glob(pattern) if not self._is_excluded(p)]
+            matching_files = [
+                p
+                for p in self.base_dir.glob(pattern)
+                if path_resolves_within(p, self.base_dir) and not self._is_excluded(p)
+            ]
             result = None
             if self.expose_base_directory:
                 file_paths = [str(file_path) for file_path in matching_files]
@@ -368,6 +372,8 @@ class FileTools(Toolkit):
                         walk_done = True
                         break
                     file_path = Path(dirpath) / filename
+                    if not path_resolves_within(file_path, self.base_dir):
+                        continue
                     if self._is_excluded(file_path):
                         continue
                     if file_path.suffix.lower() not in TEXT_EXTENSIONS:

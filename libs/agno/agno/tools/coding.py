@@ -7,6 +7,7 @@ from textwrap import dedent
 from typing import Any, List, Optional, Union
 
 from agno.tools import Toolkit
+from agno.tools._local_file_utils import path_resolves_within
 from agno.utils.log import log_error, log_info, logger
 
 
@@ -679,6 +680,8 @@ class CodingTools(Toolkit):
             # Use pathlib glob
             matches = []
             for match in resolved_path.glob(pattern):
+                if self.restrict_to_base_dir and not path_resolves_within(match, self.base_dir):
+                    continue
                 try:
                     rel_path = match.relative_to(self.base_dir)
                     suffix = "/" if match.is_dir() else ""
