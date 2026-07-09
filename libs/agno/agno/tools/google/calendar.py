@@ -266,8 +266,16 @@ class GoogleCalendarTools(GoogleToolkit):
             attendees_list = [{"email": attendee} for attendee in attendees] if attendees else []
 
             try:
-                start_time = datetime.datetime.fromisoformat(start_date).strftime("%Y-%m-%dT%H:%M:%S")
-                end_time = datetime.datetime.fromisoformat(end_date).strftime("%Y-%m-%dT%H:%M:%S")
+                start_dt = datetime.datetime.fromisoformat(start_date)
+                end_dt = datetime.datetime.fromisoformat(end_date)
+                if start_dt.tzinfo is None:
+                    start_time = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                else:
+                    start_time = start_dt.isoformat()
+                if end_dt.tzinfo is None:
+                    end_time = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                else:
+                    end_time = end_dt.isoformat()
             except ValueError:
                 return json.dumps({"error": "Invalid datetime format. Use ISO format (YYYY-MM-DDTHH:MM:SS)."})
 
@@ -352,7 +360,11 @@ class GoogleCalendarTools(GoogleToolkit):
 
             if start_date:
                 try:
-                    start_time = datetime.datetime.fromisoformat(start_date).strftime("%Y-%m-%dT%H:%M:%S")
+                    start_dt = datetime.datetime.fromisoformat(start_date)
+                    if start_dt.tzinfo is None:
+                        start_time = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                    else:
+                        start_time = start_dt.isoformat()
                     event["start"]["dateTime"] = start_time
                     if timezone:
                         event["start"]["timeZone"] = timezone
@@ -361,7 +373,11 @@ class GoogleCalendarTools(GoogleToolkit):
 
             if end_date:
                 try:
-                    end_time = datetime.datetime.fromisoformat(end_date).strftime("%Y-%m-%dT%H:%M:%S")
+                    end_dt = datetime.datetime.fromisoformat(end_date)
+                    if end_dt.tzinfo is None:
+                        end_time = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+                    else:
+                        end_time = end_dt.isoformat()
                     event["end"]["dateTime"] = end_time
                     if timezone:
                         event["end"]["timeZone"] = timezone
