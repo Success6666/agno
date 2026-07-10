@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -20,13 +21,6 @@ ALL_METHODS = [
 ]
 READ_METHODS = ["read_file", "list_files", "search_content"]
 WRITE_METHODS = ["write_file", "edit_file", "move_file", "delete_file", "run_command"]
-
-
-def _symlink_or_skip(link: Path, target: Path) -> None:
-    try:
-        link.symlink_to(target)
-    except (NotImplementedError, OSError) as exc:
-        pytest.skip(f"symlinks are not available in this environment: {exc}")
 
 
 # ------------------------------------------------------------------
@@ -406,7 +400,9 @@ def test_search_content_finds_matches():
         assert "other.py" in names
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks require admin on Windows")
 def test_search_content_skips_symlink_targets_outside_root():
+    """Test that search_content skips symlink targets outside root."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
         workspace_root = root / "workspace"
@@ -415,7 +411,10 @@ def test_search_content_skips_symlink_targets_outside_root():
         outside_dir.mkdir()
         secret = outside_dir / "secret.txt"
         secret.write_text("outside needle")
-        _symlink_or_skip(workspace_root / "linked-secret.txt", secret)
+        try:
+            (workspace_root / "linked-secret.txt").symlink_to(secret)
+        except OSError:
+            pytest.skip("Symlink creation not permitted on this platform")
         ws = Workspace(workspace_root)
 
         result = json.loads(ws.search_content(query="needle"))

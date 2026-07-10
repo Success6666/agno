@@ -1,17 +1,10 @@
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from agno.tools.coding import CodingTools
-
-
-def _symlink_or_skip(link: Path, target: Path) -> None:
-    try:
-        link.symlink_to(target)
-    except (NotImplementedError, OSError) as exc:
-        pytest.skip(f"symlinks are not available in this environment: {exc}")
-
 
 # --- read_file tests ---
 
@@ -400,6 +393,7 @@ def test_find_basic():
 
 
 def test_find_does_not_return_traversal_matches_outside_base():
+    """Test that find does not return traversal matches outside base_dir."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
         base_dir = root / "base"
@@ -411,26 +405,8 @@ def test_find_does_not_return_traversal_matches_outside_base():
 
         result = tools.find("../outside/*.txt")
 
-        assert result.startswith("No files found")
+        assert "No files found" in result
         assert "secret.txt" not in result
-
-
-def test_ls_skips_symlink_targets_outside_base():
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        root = Path(tmp_dir)
-        base_dir = root / "base"
-        outside_dir = root / "outside"
-        base_dir.mkdir()
-        outside_dir.mkdir()
-        (outside_dir / "secret.txt").write_text("outside secret")
-        (base_dir / "inside.txt").write_text("inside content")
-        _symlink_or_skip(base_dir / "linked-secret.txt", outside_dir / "secret.txt")
-        tools = CodingTools(base_dir=base_dir)
-
-        result = tools.ls()
-
-        assert "inside.txt" in result
-        assert "linked-secret.txt" not in result
 
 
 def test_find_limit():
@@ -485,6 +461,29 @@ def test_ls_path_escape():
         result = tools.ls(path="../../etc")
         assert "Error" in result
         assert "outside" in result
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks require admin on Windows")
+def test_ls_skips_symlink_targets_outside_base():
+    """Test that ls skips symlink targets outside base_dir."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        base_dir = root / "base"
+        outside_dir = root / "outside"
+        base_dir.mkdir()
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("outside secret")
+        (base_dir / "inside.txt").write_text("inside content")
+        try:
+            (base_dir / "linked-secret.txt").symlink_to(outside_dir / "secret.txt")
+        except OSError:
+            pytest.skip("Symlink creation not permitted on this platform")
+        tools = CodingTools(base_dir=base_dir, enable_ls=True)
+
+        result = tools.ls()
+
+        assert "inside.txt" in result
+        assert "linked-secret.txt" not in result
 
 
 def test_ls_empty_dir():

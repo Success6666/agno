@@ -1,17 +1,11 @@
 import json
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from agno.tools.file import FileTools
-
-
-def _symlink_or_skip(link: Path, target: Path) -> None:
-    try:
-        link.symlink_to(target)
-    except (NotImplementedError, OSError) as exc:
-        pytest.skip(f"symlinks are not available in this environment: {exc}")
 
 
 def test_save_and_read_file():
@@ -191,7 +185,9 @@ def test_search_content_finds_matches():
         assert "other.py" in file_names
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks require admin on Windows")
 def test_search_content_skips_symlink_targets_outside_base():
+    """Test that search_content skips symlink targets outside base_dir."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
         base_dir = root / "base"
@@ -200,7 +196,10 @@ def test_search_content_skips_symlink_targets_outside_base():
         outside_dir.mkdir()
         secret = outside_dir / "secret.txt"
         secret.write_text("outside needle")
-        _symlink_or_skip(base_dir / "linked-secret.txt", secret)
+        try:
+            (base_dir / "linked-secret.txt").symlink_to(secret)
+        except OSError:
+            pytest.skip("Symlink creation not permitted on this platform")
         file_tools = FileTools(base_dir=base_dir)
 
         result = json.loads(file_tools.search_content(query="needle"))
@@ -209,7 +208,9 @@ def test_search_content_skips_symlink_targets_outside_base():
         assert result["files"] == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlinks require admin on Windows")
 def test_list_files_skips_symlink_targets_outside_base():
+    """Test that list_files skips symlink targets outside base_dir."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
         base_dir = root / "base"
@@ -218,7 +219,10 @@ def test_list_files_skips_symlink_targets_outside_base():
         outside_dir.mkdir()
         (outside_dir / "secret.txt").write_text("outside secret")
         (base_dir / "inside.txt").write_text("inside content")
-        _symlink_or_skip(base_dir / "linked-secret.txt", outside_dir / "secret.txt")
+        try:
+            (base_dir / "linked-secret.txt").symlink_to(outside_dir / "secret.txt")
+        except OSError:
+            pytest.skip("Symlink creation not permitted on this platform")
         file_tools = FileTools(base_dir=base_dir)
 
         files = json.loads(file_tools.list_files())
