@@ -1,7 +1,17 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from agno.tools.coding import CodingTools
+
+
+def _symlink_or_skip(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are not available in this environment: {exc}")
+
 
 # --- read_file tests ---
 
@@ -403,6 +413,24 @@ def test_find_does_not_return_traversal_matches_outside_base():
 
         assert result.startswith("No files found")
         assert "secret.txt" not in result
+
+
+def test_ls_skips_symlink_targets_outside_base():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        base_dir = root / "base"
+        outside_dir = root / "outside"
+        base_dir.mkdir()
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("outside secret")
+        (base_dir / "inside.txt").write_text("inside content")
+        _symlink_or_skip(base_dir / "linked-secret.txt", outside_dir / "secret.txt")
+        tools = CodingTools(base_dir=base_dir)
+
+        result = tools.ls()
+
+        assert "inside.txt" in result
+        assert "linked-secret.txt" not in result
 
 
 def test_find_limit():

@@ -29,9 +29,11 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+from agno.exceptions import PathSecurityError
 from agno.tools import Toolkit
-from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS, path_matches_exclude, path_resolves_within
+from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS, path_matches_exclude
 from agno.utils.log import log_debug, log_error, log_info, log_warning
+from agno.utils.path_safety import safe_join_relative_path
 
 TEXT_EXTENSIONS = {
     # Markup and data
@@ -495,21 +497,18 @@ class Workspace(Toolkit):
                 base_depth = len(d.parts)
                 for dirpath, dirnames, filenames in os.walk(d):
                     rel_depth = len(Path(dirpath).parts) - base_depth
-
-                    def visible_child(name: str) -> bool:
-                        full = Path(dirpath) / name
-                        return path_resolves_within(full, self.root) and not self._is_excluded(full)
-
                     if rel_depth >= max_depth:
                         # Stop recursion but keep dir names for enumeration below.
-                        visible_dirs = [name for name in dirnames if visible_child(name)]
+                        visible_dirs = [name for name in dirnames if not self._is_excluded(Path(dirpath) / name)]
                         dirnames[:] = []
                     else:
-                        dirnames[:] = [name for name in dirnames if visible_child(name)]
+                        dirnames[:] = [name for name in dirnames if not self._is_excluded(Path(dirpath) / name)]
                         visible_dirs = list(dirnames)
                     for name in filenames + visible_dirs:
                         full = Path(dirpath) / name
-                        if not path_resolves_within(full, self.root):
+                        try:
+                            safe_join_relative_path(self.root, full.relative_to(self.root).as_posix())
+                        except PathSecurityError:
                             continue
                         if self._is_excluded(full):
                             continue
@@ -517,16 +516,26 @@ class Workspace(Toolkit):
                             continue
                         entries.append(full)
             elif pattern:
-                entries = [
-                    p for p in d.glob(pattern) if path_resolves_within(p, self.root) and not self._is_excluded(p)
-                ]
+                entries = []
+                for p in d.glob(pattern):
+                    try:
+                        safe_join_relative_path(self.root, p.relative_to(self.root).as_posix())
+                    except PathSecurityError:
+                        continue
+                    if not self._is_excluded(p):
+                        entries.append(p)
             else:
-                entries = [p for p in d.iterdir() if path_resolves_within(p, self.root) and not self._is_excluded(p)]
+                entries = []
+                for p in d.iterdir():
+                    try:
+                        safe_join_relative_path(self.root, p.relative_to(self.root).as_posix())
+                    except PathSecurityError:
+                        continue
+                    if not self._is_excluded(p):
+                        entries.append(p)
 
             files = []
             for p in sorted(entries):
-                if not path_resolves_within(p, self.root):
-                    continue
                 try:
                     is_dir = p.is_dir()
                     size = None if is_dir else _format_size(p.stat().st_size)
@@ -589,7 +598,9 @@ class Workspace(Toolkit):
                         walk_done = True
                         break
                     file_path = Path(dirpath) / filename
-                    if not path_resolves_within(file_path, self.root):
+                    try:
+                        safe_join_relative_path(self.root, file_path.relative_to(self.root).as_posix())
+                    except PathSecurityError:
                         continue
                     if self._is_excluded(file_path):
                         continue

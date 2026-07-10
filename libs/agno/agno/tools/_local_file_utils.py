@@ -85,19 +85,3 @@ def path_matches_exclude(path: Path, root: Path, exclude_patterns: Sequence[str]
     except ValueError:
         return False
     return any(fnmatch(part, pattern) for part in rel.parts for pattern in exclude_patterns)
-
-
-def path_resolves_within(path: Path, root: Path) -> bool:
-    """Return True when ``path`` resolves inside ``root``.
-
-    This catches traversal patterns and symlink targets that escape a local
-    filesystem tool's configured root while letting callers skip unsafe
-    candidates without turning a search/list operation into an error.
-    """
-    try:
-        resolved_path = path.resolve()
-        resolved_root = root.resolve()
-        resolved_path.relative_to(resolved_root)
-    except (OSError, RuntimeError, UnicodeEncodeError, ValueError):
-        return False
-    return True

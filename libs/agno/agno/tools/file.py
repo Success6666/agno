@@ -3,9 +3,11 @@ import os
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
+from agno.exceptions import PathSecurityError
 from agno.tools import Toolkit
-from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS, path_matches_exclude, path_resolves_within
+from agno.tools._local_file_utils import DEFAULT_EXCLUDE_PATTERNS, path_matches_exclude
 from agno.utils.log import log_debug, log_error
+from agno.utils.path_safety import safe_join_relative_path
 
 TEXT_EXTENSIONS = {
     ".md",
@@ -277,14 +279,17 @@ class FileTools(Toolkit):
             log_debug(f"Reading files in : {self.base_dir}/{directory}")
             safe, d = self.check_escape(directory)
             if safe:
-                return json.dumps(
-                    [
-                        file_path.relative_to(self.base_dir).as_posix()
-                        for file_path in d.iterdir()
-                        if not self._is_excluded(file_path)
-                    ],
-                    indent=4,
-                )
+                files = []
+                for file_path in d.iterdir():
+                    rel_path = file_path.relative_to(self.base_dir).as_posix()
+                    try:
+                        safe_join_relative_path(self.base_dir, rel_path)
+                    except PathSecurityError:
+                        continue
+                    if self._is_excluded(file_path):
+                        continue
+                    files.append(rel_path)
+                return json.dumps(files, indent=4)
             else:
                 return "{}"
         except Exception as e:
@@ -302,11 +307,14 @@ class FileTools(Toolkit):
                 return "Error: Pattern cannot be empty"
 
             log_debug(f"Searching files in {self.base_dir} with pattern {pattern}")
-            matching_files = [
-                p
-                for p in self.base_dir.glob(pattern)
-                if path_resolves_within(p, self.base_dir) and not self._is_excluded(p)
-            ]
+            matching_files = []
+            for p in self.base_dir.glob(pattern):
+                try:
+                    safe_join_relative_path(self.base_dir, p.relative_to(self.base_dir).as_posix())
+                except PathSecurityError:
+                    continue
+                if not self._is_excluded(p):
+                    matching_files.append(p)
             result = None
             if self.expose_base_directory:
                 file_paths = [str(file_path) for file_path in matching_files]
@@ -372,7 +380,9 @@ class FileTools(Toolkit):
                         walk_done = True
                         break
                     file_path = Path(dirpath) / filename
-                    if not path_resolves_within(file_path, self.base_dir):
+                    try:
+                        safe_join_relative_path(self.base_dir, file_path.relative_to(self.base_dir).as_posix())
+                    except PathSecurityError:
                         continue
                     if self._is_excluded(file_path):
                         continue

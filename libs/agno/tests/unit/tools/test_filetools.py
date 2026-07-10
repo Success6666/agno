@@ -209,6 +209,24 @@ def test_search_content_skips_symlink_targets_outside_base():
         assert result["files"] == []
 
 
+def test_list_files_skips_symlink_targets_outside_base():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        base_dir = root / "base"
+        outside_dir = root / "outside"
+        base_dir.mkdir()
+        outside_dir.mkdir()
+        (outside_dir / "secret.txt").write_text("outside secret")
+        (base_dir / "inside.txt").write_text("inside content")
+        _symlink_or_skip(base_dir / "linked-secret.txt", outside_dir / "secret.txt")
+        file_tools = FileTools(base_dir=base_dir)
+
+        files = json.loads(file_tools.list_files())
+
+        assert "inside.txt" in files
+        assert "linked-secret.txt" not in files
+
+
 def test_search_content_directory_scoping():
     """Test that search_content respects directory scoping."""
     with tempfile.TemporaryDirectory() as tmp_dir:
